@@ -1,25 +1,20 @@
-function scrapeCommentsWithoutReplies(){
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var result=[['Name','Comment','Time','Likes','Reply Count']];
-  var vid = ss.getSheets()[0].getRange(1,1).getValue();
-  var nextPageToken=undefined;
+function extrairComentarios(){
+  var planilha = SpreadsheetApp.getActiveSpreadsheet(); //Define a planilha ativa
+  var resultado=[['Nome','Comentário']];
+  var url = planilha.getSheets()[0].getRange(1,1).getValue(); //Variável url recebe o valor da primeira coluna, primeira linha.
+  var nextPageToken = undefined;
  
   while(1){
-    var data = YouTube.CommentThreads.list('snippet', {videoId: vid, maxResults: 100, pageToken: nextPageToken})
-    nextPageToken=data.nextPageToken
-    //console.log(nextPageToken);
-    for (var row=0; row<data.items.length; row++) {
-      result.push([data.items[row].snippet.topLevelComment.snippet.authorDisplayName,
-                   data.items[row].snippet.topLevelComment.snippet.textDisplay,
-                   data.items[row].snippet.topLevelComment.snippet.publishedAt,
-                   data.items[row].snippet.topLevelComment.snippet.likeCount,
-                   data.items[row].snippet.totalReplyCount]);
+    var dados = YouTube.CommentThreads.list('snippet', {videoId: url, maxResults: 3000, pageToken: nextPageToken}) //O objeto snippet contém detalhes básicos sobre os comentários.
+    nextPageToken = dados.nextPageToken										  // PageToken 	
+    for (var linha=0; linha< dados.items.length; linha++) {
+      resultado.push([dados.items[linha].snippet.topLevelComment.snippet.authorDisplayName,
+                   dados.items[linha].snippet.topLevelComment.snippet.textDisplay]);
     }
     if(nextPageToken =="" || typeof nextPageToken === "undefined"){
       break;
     }
   }
-var newSheet=ss.insertSheet(ss.getNumSheets())
-newSheet.getRange(1, 1,result.length,5).setValues(result)
-
+var novaPlaniha = planilha.insertSheet(planilha.getNumSheets())
+novaPlaniha.getRange(1, 1,resultado.length,2).setValues(resultado)
 }
