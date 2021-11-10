@@ -1,0 +1,207 @@
+###########################################################################################################
+#                                                                                                         #                                                        #
+#                               Classificando Comentários Racistas                                        #        
+#                                                                                                         #
+###########################################################################################################
+
+
+# Classificação com Naive Bayes
+
+# Iniciando e definindo o diretório de trabalho
+getwd()
+setwd("C:/Users/maria/OneDrive/Documentos/ClassificadorNaiveBayes")
+
+
+# Bibliotecas e pacotes que serão usadas
+install.packages("slam")
+install.packages("tm")
+install.packages("SnowballC")
+install.packages("wordcloud")
+install.packages("gmodels")
+install.packages("readr")
+install.packages('Rcpp')
+
+
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(slam)
+library(e1071)
+library(gmodels)
+library(readr)
+library(lexicon)
+library(Rcpp)
+#library(textstem)
+###########################################################################################################
+# 1 - Carregando os dados
+###########################################################################################################
+
+dados <- read.csv("data.csv", encoding = "UTF-8", header = T)
+
+###########################################################################################################
+# 2 - Análise dos dados - Examinando a estrutura dos dados
+###########################################################################################################
+head(dados)
+str(dados)
+
+# Convertendo a variavel dados$classificacao para factor(Objeto)
+#(Esse comando no R torna mas facil a analise dos dados é uma carcteristica da linguagem)
+dados$classificacao <- factor(dados$classificacao)
+# Mostra os rotulos presentes na base de dados em texto
+levels(dados$classificacao)
+# Exibe a quantidade de rotulos presentes (Nº Inteiro) 
+nlevels(dados$classificacao)
+
+# Examinando a estrutura dos dados
+# O 'str' Exibe em forma de string as caracteristicas do objeto. 
+str(dados$classificacao) 
+# Mostra a quantidade de comentarios considerados normais e racistas 
+table(dados$classificacao)
+
+
+# Iniciando a mineração 
+
+# Gerando um Vcorpus, coleção de documentação de texto (passando como parametro um vetor de caracteres) 
+
+dados_corpus <- VCorpus(VectorSource(dados$comentario))
+
+# Informações relevantes sobre a estrutura dos dados
+print(dados_corpus)
+
+#inspect(dados_corpus[1:2])
+
+# Convertendo os dados do corpus para caracter, facilitando o ajuste
+as.character(dados_corpus[[1]])
+lapply(dados_corpus[1:2], as.character)
+###############################################################
+# Ajuste e limpeza do Corpus textual com a biblioteca tm_map()#
+###############################################################
+
+# Palavras em minúsculo 
+dados_corpus_clean <- tm_map(dados_corpus, content_transformer(tolower))
+
+# remove números
+dados_corpus_clean <- tm_map(dados_corpus_clean, removeNumbers) 
+# remove stop words(palavras desnecessárias)
+
+stopwords("portuguese")
+dados_corpus_clean <- tm_map(dados_corpus_clean, removeWords, stopwords("portuguese")) 
+
+# remove pontuação
+dados_corpus_clean <- tm_map(dados_corpus_clean, removePunctuation) 
+
+# Aplica Stem (Deixa apenas a palavra raiz, remove afixos, sufixos...)
+dados_corpus_clean <- tm_map(dados_corpus_clean, stemDocument, language = "portuguese")
+
+# Elimina espaços em branco
+dados_corpus_clean <- tm_map(dados_corpus_clean, stripWhitespace) 
+
+#dados_corpus_clean <- tm_map(dados_corpus_clean, lemmatize_strings, language = "portuguese")
+
+######################
+# Comparando o Corpus#
+######################
+
+# Antes da limpeza
+lapply(dados_corpus[1:3], as.character)
+
+# Depois da Limpeza
+lapply(dados_corpus_clean[1:3], as.character)
+
+# Criando uma matriz esparsa document-term 
+#(É uma matriz matemática que mostra a frequencia dos termos) que ocorrem no corpus 
+dados_dtm <- DocumentTermMatrix(dados_corpus_clean)
+
+
+# Comparando os resultados
+dados_dtm
+
+
+#############################################################################
+#  Modelagem Preditiva                                                      #
+#############################################################################
+
+# Criando dados de treino e de teste
+dados_dtm_train <- dados_dtm[3101:4754, ]
+#1 3100
+dados_dtm_test  <- dados_dtm[1:3100, ]
+#3101 4754 
+
+# Labels(Rotulos) variável alvo
+dados_train_labels <- dados[3101:4754,]$classificacao
+dados_test_labels  <- dados[1:3100,]$classificacao
+
+# Verificando se a proporção de Spam é similar
+prop.table(table(dados_train_labels))
+prop.table(table(dados_test_labels))
+
+# Word Cloud Total
+wordcloud(dados_corpus_clean, min.freq = 50, random.order = FALSE)
+
+# Word Cloud Racista
+racista <- subset(dados_corpus_clean, dados$classificacao=="racista")
+wordcloud(racista, max.words = 100, random.order = FALSE, scale = c(4,0,1.5))
+
+# Word Cloud Racista
+normal <- subset(dados_corpus_clean, dados$classificacao=="normal")
+wordcloud(normal, min.freq = 50, random.order = FALSE)
+
+
+# Frequência dos dados
+dtm_freq_train <- removeSparseTerms(dados_dtm_train, 0.999)
+dtm_freq_train
+
+# Indicador de Features para palavras frequentes
+findFreqTerms(dados_dtm_train, 5)
+
+# Salva as palavras frequentes em um vetor de caracters
+freq_words <- findFreqTerms(dados_dtm_train, 5)
+str(freq_words)
+
+# Criando subsets apenas com palavras mais frequentes
+dtm_freq_train <- dados_dtm_train[ , freq_words]
+dtm_freq_test <- dados_dtm_test[ , freq_words]
+
+# Converte para fator
+convert_counts <- function(x) {
+  print(x)
+  x <- ifelse(x > 0, "Sim", "Não")
+}
+
+# Processamento Pesado () converte counts para colunas de dados de treino e de teste
+train <- apply(dtm_freq_train, MARGIN = 2, convert_counts)
+test  <- apply(dtm_freq_test, MARGIN = 2, convert_counts)
+
+# Exibe o test em forma de string
+str(test)
+
+# Treinando o modelo
+nb_classifier <- naiveBayes(train, dados_train_labels)
+
+# Avaliando o modelo
+test_pred <- predict(nb_classifier, test)
+
+#  Matrix de confusão
+CrossTable(test_pred, 
+           dados_test_labels,
+           prop.chisq = FALSE, 
+           prop.t = FALSE, 
+           prop.r = FALSE,
+           dnn = c('Previsto', 'Observado'))
+
+# Melhorando a performance do modelo aplicando suavização laplace
+nb_classifier_v2 <- naiveBayes(train, dados_train_labels, laplace = 1)
+
+# Avaliando o modelo
+test_pred2 <- predict(nb_classifier_v2, test)
+
+#  Matrix de confusão
+CrossTable(test_pred2, 
+           dados_test_labels,
+           prop.chisq = FALSE, 
+           prop.t = FALSE, 
+           prop.r = FALSE,
+           dnn = c('Previsto', 'Observado'))
+
+############################# FIM #############################
+
